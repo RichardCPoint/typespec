@@ -6,9 +6,11 @@ import type { Program } from "../program.js";
 import { isTemplateDeclarationOrInstance } from "../type-utils.js";
 import { Diagnostic, Model, Type, Union } from "../types.js";
 
+export type DiscriminatorValue = string | number | boolean;
+
 export interface DiscriminatedUnion {
   propertyName: string;
-  variants: Map<string, Model>;
+  variants: Map<DiscriminatorValue, Model>;
 }
 
 export function getDiscriminatedUnion(
@@ -41,9 +43,9 @@ function getDiscriminatedUnionForUnion(
   type: Union,
   discriminator: Discriminator,
 ): [DiscriminatedUnion, readonly Diagnostic[]] {
-  const variants = new Map<string, Model>();
+  const variants = new Map<DiscriminatorValue, Model>();
   const diagnostics: Diagnostic[] = [];
-  const duplicates = new DuplicateTracker<string, Model>();
+  const duplicates = new DuplicateTracker<DiscriminatorValue, Model>();
 
   for (const variant of type.variants.values()) {
     if (variant.type.kind !== "Model") {
@@ -70,7 +72,7 @@ function getDiscriminatedUnionForUnion(
       continue;
     }
 
-    const key = getStringValue(prop.type);
+    const key = getDiscriminatorValue(prop.type);
     if (key) {
       duplicates.track(key, variant.type);
       variants.set(key, variant.type);
@@ -140,8 +142,8 @@ function getDiscriminatedUnionForModel(
 }
 
 function reportDuplicateDiscriminatorValues(
-  duplicates: DuplicateTracker<string, Model>,
-  diagnostics: Diagnostic[],
+  duplicates: DuplicateTracker<DiscriminatorValue, Model>,
+  diagnostics: Diagnostic[]
 ) {
   for (const [duplicateKey, models] of duplicates.entries()) {
     for (const model of models) {
@@ -149,7 +151,7 @@ function reportDuplicateDiscriminatorValues(
         createDiagnostic({
           code: "invalid-discriminator-value",
           messageId: "duplicate",
-          format: { discriminator: duplicateKey },
+          format: { discriminator: `${duplicateKey}` },
           target: model,
         }),
       );
@@ -211,12 +213,16 @@ function getStringValues(type: Type): string[] {
   }
 }
 
-function getStringValue(type: Type): string | undefined {
+function getDiscriminatorValue(type: Type): DiscriminatorValue | undefined {
   switch (type.kind) {
+    case "Boolean":
+      return type.value;
+    case "Number":
+      return type.value;
     case "String":
       return type.value;
     case "EnumMember":
-      return typeof type.value !== "number" ? (type.value ?? type.name) : undefined;
+      return ["boolean", "number", "string"].indexOf( typeof type.value) >= 0 ? (type.value ?? type.name) : undefined;
     default:
       return undefined;
   }
